@@ -5,13 +5,15 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-#define PORT 21 // Default FTP port
+#define PORT 21 // Default FTP port acc to google
 
 int main()
 {
     int server_fd, new_socket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
+
+    // the following creating socket, binding and listening is inspired from lab code//
 
     // Creating socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
@@ -20,7 +22,7 @@ int main()
         exit(EXIT_FAILURE);
     }
 
-    // Set socket options to allow immediate reuse of the address and port
+    // Setting socket options to allow immediate reuse of the address and port
     int opt = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
     {
@@ -32,14 +34,14 @@ int main()
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
-    // Bind the socket to the specified address and port
+    // Binding the socket to the specified address and port
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
     {
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
 
-    // Listen for incoming connections
+    // Listening for incoming connections
     if (listen(server_fd, 3) < 0)
     {
         perror("listen");
@@ -48,7 +50,7 @@ int main()
 
     printf("FTP server listening on port %d...\n", PORT);
 
-    // Accept incoming connections
+    // Accepting incoming connections
     while (1)
     {
         if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
@@ -58,9 +60,7 @@ int main()
         }
         printf("New connection accepted\n");
 
-        // Handle client communication here
-
-        close(new_socket); // Close the connection with the client
+        close(new_socket); // Closing the connection with the client
     }
 
     return 0;
