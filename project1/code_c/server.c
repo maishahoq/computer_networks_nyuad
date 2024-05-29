@@ -22,6 +22,7 @@ int main()
 {
     int server_socket, client_socket;
     struct sockaddr_in server_address, client_address;
+    bzero(&server_address, sizeof(server_address));
     socklen_t client_len = sizeof(client_address);
 
     fd_set master_set, read_fds;
@@ -59,40 +60,75 @@ int main()
         exit(EXIT_FAILURE);
     }
 
-    signal(SIGCHLD, sigchld_handler); // Reaping dead child processes
+    // Setting up signal handler
+    // Reaping dead child processes
+    struct sigaction sa;
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART; // Restart interrupted system calls
+    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+    {
+        perror("sigaction failed");
+        exit(EXIT_FAILURE);
+    }
 
     printf("FTP server is listening on port %d ...\n", PORT);
+
+    FD_ZERO(&master_set);
+    FD_SET(server_socket, &master_set);
+    fd_max = server_socket;
 
     // Accepting incoming connections
     // we used infinite while loop so that the connection stays until QUIT is pressed
     while (1)
     {
+
+        // select() is used to monitor multiple file descriptors to see if any of them are ready for I/O operations
+        // The master_set keeps track of all file descriptors, while read_fds is used by select() to check for ready descriptors
+        // When a new connection is accepted, the client socket is added to the master_set
+        // When a client disconnects, the client socket is removed from the master_set
+
+        read_fds = master_set;
+
+        if (select(fd_max + 1, &read_fds, NULL, NULL, NULL) < 0)
+        {
+            perror("select failed");
+            exit(EXIT_FAILURE);
+        }
+
         // Accept a new connection
         // Waits for an incoming connection and returns a new socket descriptor clinet_socket for communication with the client
-        client_socket = accept(server_socket, (struct sockaddr *)&client_address, &client_len);
-        if (client_socket < 0)
-        {
-            perror("accept failed");
-            continue; // Continue to accept new connections
-        }
-        printf("New connection accepted\n");
 
-        if (fork() == 0)
+        for (int i = 0; i <= fd_max; i++)
         {
-            // Child process
-            close(server_socket); // Child doesn't need the listener
-            // client message handling starts
-            handle_client(client_socket); // Handle client communication
-            // client message handling ends
-            exit(0); // Exit child process after handling client
-        }
-        else
-        {
-            // Parent process
-            close(client_socket); // Parent doesn't need this socket
+            if (FD_ISSET(i, &read_fds))
+            {
+                if (i == server_socket)
+                {
+                    client_socket = accept(server_socket, (struct sockaddr *)&client_address, &client_len);
+                    if (client_socket < 0)
+                    {
+                        perror("accept failed");
+                        continue; // Continue to accept new connections
+                    }
+                    printf("New connection accepted\n");
+                    FD_SET(client_socket, &master_set);
+
+                    if (client_socket > fd_max)
+                    {
+                        fd_max = client_socket;
+                    }
+                }
+                else
+                {
+                    handle_client(i);
+                    FD_CLR(i, &master_set);
+                }
+            }
         }
     }
 
+    close(server_socket);
     return 0;
 }
 
@@ -107,46 +143,193 @@ void handle_client(int client_socket)
     char buffer[BUFFER_SIZE] = {0};
     int bytes_read;
 
-    while ((bytes_read = read(client_socket, buffer, BUFFER_SIZE - 1)) > 0)
+    if ((bytes_read = read(client_socket, buffer, BUFFER_SIZE - 1)) > 0)
     {
         buffer[bytes_read] = '\0';
-        printf("Received: %s", buffer);
+        printf("Received: %s\n", buffer);
+        handle_command(client_socket, buffer);
+    }
 
-        if (strncmp(buffer, "GET ", 4) == 0)
+    close(client_socket);
+}
+
+void handle_command(int client_socket, char *buffer)
+{
+    if (strncmp(buffer, "RETR ", 5) == 0)
+    {
+        char *filename = buffer + 5;
+        filename[strcspn(filename, "\r\n")] = '\0'; // Removing the newline characters
+
+        if (fork() == 0)
         {
-            char *filename = buffer + 4;
-            filename[strcspn(filename, "\r\n")] = '\0'; // Remove newline characters
+            handle_retr(client_socket, filename);
+            exit(0);
+        }
+    }
+    else if (strcmp(buffer, "LIST\n") == 0 || strcmp(buffer, "LIST\r\n") == 0)
+    {
+        if (fork() == 0)
+        {
+            handle_list(client_socket, 0);
+            exit(0);
+        }
+    }
+    else if (strcmp(buffer, "!LIST\n") == 0 || strcmp(buffer, "!LIST\r\n") == 0)
+    {
+        if (fork() == 0)
+        {
+            handle_list(client_socket, 1);
+            exit(0);
+        }
+    }
+    else if (strncmp(buffer, "CWD ", 4) == 0)
+    {
+        char *foldername = buffer + 4;
+        foldername[strcspn(foldername, "\r\n")] = '\0'; // Remove newline characters
+        handle_cwd(client_socket, foldername, 0);
+    }
+    else if (strncmp(buffer, "!CWD ", 5) == 0)
+    {
+        char *foldername = buffer + 5;
+        foldername[strcspn(foldername, "\r\n")] = '\0'; // Remove newline characters
+        handle_cwd(client_socket, foldername, 1);
+    }
+    else
+    {
+        write(client_socket, "ERROR: Unknown command\n", 23);
+    }
+    // shutdown(client_socket, SHUT_WR); //should we add this here?
+}
 
-            printf("\n After removing newline characters from filename \n");
+void handle_retr(int client_socket, char *filename)
+{
+    char filepath[BUFFER_SIZE];
+    snprintf(filepath, sizeof(filepath), "../server/%s", filename); // Construct the path to the file
 
-            char filepath[BUFFER_SIZE];
-            snprintf(filepath, sizeof(filepath), "../server/%s", filename); // Construct the path to the file
+    FILE *file = fopen(filepath, "rb");
 
-            printf("After constructing filepath \n");
+    if (file == NULL)
+    {
+        write(client_socket, "ERROR: File not found\n", 22);
+        return;
+    }
 
-            FILE *file = fopen(filepath, "rb");
-            printf("After opening file \n");
+    char buffer[BUFFER_SIZE];
+    int bytes_read;
 
-            if (file == NULL)
-            {
-                write(client_socket, "ERROR: File not found\n", 22);
-                continue;
-            }
+    while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0)
+    {
+        write(client_socket, buffer, bytes_read);
+    }
+    // shutdown(client_socket, SHUT_WR); // should we add this here?
+    fclose(file);
+}
 
-            // this line should read and write, read and write as long as there is something to read in file
-            while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0)
-            {
-                printf("Before Writing the file in server");
-                write(client_socket, buffer, bytes_read);
-                printf("After Writing the file in server");
-            }
-            shutdown(client_socket, SHUT_WR);
-            fclose(file);
+void handle_list(int client_socket, int local)
+{
+    FILE *fp;
+    char path[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE];
+
+    if (local)
+    {
+        fp = popen("ls -l ../client", "r");
+    }
+    else
+    {
+        fp = popen("ls -l ../server", "r");
+    }
+
+    if (fp == NULL)
+    {
+        write(client_socket, "ERROR: Failed to list directory\n", 32);
+        return;
+    }
+
+    while (fgets(path, sizeof(path), fp) != NULL)
+    {
+        write(client_socket, path, strlen(path));
+    }
+    // shutdown(client_socket, SHUT_WR); // should we add this here?
+    pclose(fp);
+}
+
+void handle_cwd(int client_socket, char *foldername, int local)
+{
+    char path[BUFFER_SIZE];
+
+    if (local)
+    {
+        if (chdir(foldername) == 0)
+        {
+            write(client_socket, "Local directory changed\n", 24);
         }
         else
         {
-            write(client_socket, "ERROR: Unknown command\n", 23);
+            write(client_socket, "ERROR: Failed to change local directory\n", 40);
         }
+        // shutdown(client_socket, SHUT_WR); // should we add this here?
     }
-    close(client_socket);
+    else
+    {
+        snprintf(path, sizeof(path), "../server/%s", foldername);
+        if (chdir(path) == 0)
+        {
+            write(client_socket, "Remote directory changed\n", 25);
+        }
+        else
+        {
+            write(client_socket, "ERROR: Failed to change remote directory\n", 41);
+        }
+        // shutdown(client_socket, SHUT_WR); // should we add this here?
+    }
 }
+
+// void handle_client(int client_socket)
+// {
+//     char buffer[BUFFER_SIZE] = {0};
+//     int bytes_read;
+
+//     while ((bytes_read = read(client_socket, buffer, BUFFER_SIZE - 1)) > 0)
+//     {
+//         buffer[bytes_read] = '\0';
+//         printf("Received: %s", buffer);
+
+//         if (strncmp(buffer, "GET ", 4) == 0)
+//         {
+//             char *filename = buffer + 4;
+//             filename[strcspn(filename, "\r\n")] = '\0'; // Remove newline characters
+
+//             printf("\n After removing newline characters from filename \n");
+
+//             char filepath[BUFFER_SIZE];
+//             snprintf(filepath, sizeof(filepath), "../server/%s", filename); // Construct the path to the file
+
+//             printf("After constructing filepath \n");
+
+//             FILE *file = fopen(filepath, "rb");
+//             printf("After opening file \n");
+
+//             if (file == NULL)
+//             {
+//                 write(client_socket, "ERROR: File not found\n", 22);
+//                 continue;
+//             }
+
+//             // this line should read and write, read and write as long as there is something to read in file
+//             while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0)
+//             {
+//                 printf("Before Writing the file in server");
+//                 write(client_socket, buffer, bytes_read);
+//                 printf("After Writing the file in server");
+//             }
+//             shutdown(client_socket, SHUT_WR);
+//             fclose(file);
+//         }
+//         else
+//         {
+//             write(client_socket, "ERROR: Unknown command\n", 23);
+//         }
+//     }
+//     close(client_socket);
+// }
