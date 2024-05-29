@@ -60,7 +60,17 @@ int main()
         exit(EXIT_FAILURE);
     }
 
-    signal(SIGCHLD, sigchld_handler); // Reaping dead child processes
+    // Setting up signal handler
+    // Reaping dead child processes
+    struct sigaction sa;
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART; // Restart interrupted system calls
+    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+    {
+        perror("sigaction failed");
+        exit(EXIT_FAILURE);
+    }
 
     printf("FTP server is listening on port %d ...\n", PORT);
 
@@ -103,6 +113,7 @@ int main()
                     }
                     printf("New connection accepted\n");
                     FD_SET(client_socket, &master_set);
+
                     if (client_socket > fd_max)
                     {
                         fd_max = client_socket;
