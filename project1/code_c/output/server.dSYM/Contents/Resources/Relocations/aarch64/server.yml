@@ -1,0 +1,9 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/maimunaz/Downloads/github/computer_networks_nyuad/project1/code_c/output/server'
+relocations:
+  - { offsetInCU: 0x26, offset: 0x26, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x0, symBinAddr: 0x10000392C, symSize: 0x188 }
+  - { offsetInCU: 0x78, offset: 0x78, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x0, symBinAddr: 0x10000392C, symSize: 0x188 }
+  - { offsetInCU: 0xD8, offset: 0xD8, size: 0x8, addend: 0x0, symName: _sigchld_handler, symObjAddr: 0x188, symBinAddr: 0x100003AB4, symSize: 0x44 }
+  - { offsetInCU: 0xFC, offset: 0xFC, size: 0x8, addend: 0x0, symName: _handle_client, symObjAddr: 0x1CC, symBinAddr: 0x100003AF8, symSize: 0x234 }
+...
