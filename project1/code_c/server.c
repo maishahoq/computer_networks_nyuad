@@ -18,6 +18,13 @@ void handle_list(int client_socket, int local);
 void handle_cwd(int client_socket, char *foldername, int local);
 void sigchld_handler(int signo);
 
+
+int user_auth(int client_socket); //USER username PASS password 
+void stor_commands(int client_socket, char *filename); // STOR filename
+void pwd_commands(int client_socket); // CWD foldername !CWD foldername
+
+
+
 int main()
 {
     int server_socket, client_socket;
@@ -193,7 +200,21 @@ void handle_command(int client_socket, char *buffer)
         char *foldername = buffer + 5;
         foldername[strcspn(foldername, "\r\n")] = '\0'; // Remove newline characters
         handle_cwd(client_socket, foldername, 1);
+    } else if (strcmp(buffer, "PWD\n") == 0 || strcmp(buffer, "PWD\r\n") == 0) {
+        pwd_commands(client_socket);
+    } else if (strcmp(buffer, "!PWD\n") == 0 || strcmp(buffer, "!PWD\r\n") == 0) {
+        system("pwd");
+
     }
+    
+    else if (strncmp(buffer, "USER ", 5) == 0 || strncmp(buffer, "PASS ", 5) == 0) {
+        user_auth(client_socket);
+    } else if (strncmp(buffer, "STOR ", 5) == 0) {
+        char *filename = buffer + 5;
+        filename[strcspn(filename, "\r\n")] = '\0';
+        stor_commands(client_socket, filename);
+    }
+    
     else
     {
         write(client_socket, "ERROR: Unknown command\n", 23);
@@ -252,6 +273,80 @@ void handle_list(int client_socket, int local)
     }
     // shutdown(client_socket, SHUT_WR); // should we add this here?
     pclose(fp);
+}
+
+
+void pwd_commands(int client_socket) {
+    char cwd[BUFFER_SIZE];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        snprintf(cwd, sizeof(cwd), "257 \"%s\"\n", cwd);
+        send(client_socket, cwd, strlen(cwd), 0);
+    } else {
+        send(client_socket, "550 Failed to get current directory.\n", 37, 0);
+    }
+}
+
+void stor_commands(int client_socket, char *filename) {
+    char buffer[BUFFER_SIZE];
+    FILE *file = fopen(filename, "wb");
+
+    if (file == NULL) {
+        perror("fopen failed");
+        send(client_socket, "550 Failed to open file.\n", 25, 0);
+        return;
+    }
+
+    send(client_socket, "150 File status okay; about to open data connection.\n", 52, 0);
+
+    while (1) {
+        int bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
+        if (bytes_received <= 0) {
+            break;
+        }
+        fwrite(buffer, 1, bytes_received, file);
+    }
+
+    fclose(file);
+    send(client_socket, "226 Transfer completed.\n", 24, 0);
+}
+
+int user_auth(int client_socket) {
+    static int state = 0;
+    char buffer[BUFFER_SIZE];
+    FILE *file = fopen("users.txt", "r");
+
+    if (file == NULL) {
+        perror("fopen failed");
+        send(client_socket, "530 Not logged in.\n", 19, 0);
+        return 0;
+    }
+
+    char username[50], password[50];
+    while (fscanf(file, "%s %s", username, password) != EOF) {
+        if (state == 0) {
+            if (strcmp(buffer + 5, username) == 0) {
+                send(client_socket, "331 Username OK, need password.\n", 32, 0);
+                state = 1;
+                return 1;
+            }
+        } else {
+            if (strcmp(buffer + 5, password) == 0) {
+                send(client_socket, "230 User logged in, proceed.\n", 29, 0);
+                state = 2;
+                fclose(file);
+                return 2;
+            } else {
+                send(client_socket, "530 Not logged in.\n", 19, 0);
+                state = 0;
+                fclose(file);
+                return 0;
+            }
+        }
+    }
+
+    send(client_socket, "530 Not logged in.\n", 19, 0);
+    fclose(file);
+    return 0;
 }
 
 void handle_cwd(int client_socket, char *foldername, int local)
