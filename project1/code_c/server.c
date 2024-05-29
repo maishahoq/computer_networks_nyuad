@@ -6,11 +6,16 @@
 #include <netinet/in.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <sys/select.h>
 
 #define PORT 21 // Default FTP port acc to google
 #define BUFFER_SIZE 1024
 
 void handle_client(int client_socket);
+void handle_command(int client_socket, char *buffer);
+void handle_retr(int client_socket, char *filename);
+void handle_list(int client_socket, int local);
+void handle_cwd(int client_socket, char *foldername, int local);
 void sigchld_handler(int signo);
 
 int main()
@@ -18,6 +23,9 @@ int main()
     int server_socket, client_socket;
     struct sockaddr_in server_address, client_address;
     socklen_t client_len = sizeof(client_address);
+
+    fd_set master_set, read_fds;
+    int fd_max;
 
     // the following creating socket, binding and listening is inspired from lab code//
 
@@ -132,6 +140,7 @@ void handle_client(int client_socket)
                 write(client_socket, buffer, bytes_read);
                 printf("After Writing the file in server");
             }
+            shutdown(client_socket, SHUT_WR);
             fclose(file);
         }
         else
