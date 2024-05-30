@@ -14,7 +14,7 @@ void list_files(int socket, int local);
 void change_directory(int socket, const char *foldername, int local);
 
 
-void send_command(int socket, const char *command, const char *argument); 
+void send_pwdstor(int socket, const char *command, const char *argument); 
 void store_file(int socket, const char *filename); 
 
 
@@ -76,11 +76,9 @@ int main()
 
         handle_command(client_socket, command);
     }
-    // server message handling code ends//
-
-    close(client_socket);
-    return 0;
 }
+
+
 
 void handle_command(int socket, char *command)
 {
@@ -104,12 +102,22 @@ void handle_command(int socket, char *command)
     {
         change_directory(socket, command + 5, 1);
     }
-    else if (strncmp(command, "USER ", 5) == 0 || strncmp(command, "PASS ", 5) == 0 || strncmp(command, "STOR ", 5) == 0 || strcmp(command, "PWD") == 0 || strcmp(command, "!PWD") == 0) {
-        // Added handling for USER, PASS, STOR, PWD, !PWD using send_command
-        char *argument = command + (command[4] == ' ' ? 5 : 4); 
-        send_command(socket, command, argument); 
 
+    else if (strncmp(command, "USER ", 5) == 0 || strncmp(command, "PASS ", 5) == 0 || strncmp(command, "STOR ", 5) == 0) {
+        char *argument = command + 5;
+        send_pwdstor(socket, command, argument);
+    } else if (strcmp(command, "PWD") == 0) {
+        send_pwdstor(socket, command, NULL);
+    } else if (strcmp(command, "!PWD") == 0) {
+        char cwd[BUFFER_SIZE];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            printf("257 \"%s\"\n", cwd);
+        } else {
+            perror("getcwd() error");
+        }
     }
+    
+    
     else
     {
         write(socket, command, strlen(command));
@@ -220,6 +228,30 @@ void change_directory(int socket, const char *foldername, int local)
         }
     }
 
+}
+
+void send_pwdstor(int socket, const char *command, const char *argument) {
+    char buffer[BUFFER_SIZE];
+
+    if (argument) {
+        snprintf(buffer, sizeof(buffer), "%s %s\n", command, argument);
+    } else {
+        snprintf(buffer, sizeof(buffer), "%s\n", command);
+    }
+
+    send(socket, buffer, strlen(buffer), 0);
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_received = recv(socket, buffer, BUFFER_SIZE - 1, 0);
+    if (bytes_received > 0) {
+        buffer[bytes_received] = '\0';
+        printf("%s", buffer);
+    }
+
+    if (strncmp(command, "STOR", 4) == 0 && argument) {
+        store_file(socket, argument);
+    }
+}
+
 void store_file(int socket, const char *filename) {
     char buffer[BUFFER_SIZE];
     FILE *file = fopen(filename, "rb");
@@ -228,7 +260,7 @@ void store_file(int socket, const char *filename) {
         perror("fopen failed");
         return;
     }
-
+    
     while (1) {
         size_t bytes_read = fread(buffer, 1, BUFFER_SIZE, file);
         if (bytes_read <= 0) {
@@ -240,26 +272,6 @@ void store_file(int socket, const char *filename) {
     fclose(file);
 }
 
-void send_command(int socket, const char *command, const char *argument) {
-    char buffer[BUFFER_SIZE];
-
-    if (argument) {
-        snprintf(buffer, sizeof(buffer), "%s %s\n", command, argument);
-    } else {
-        snprintf(buffer, sizeof(buffer), "%s\n", command);
-    }
-
-    send(socket, buffer, strlen(buffer), 0);
-    memset(buffer, 0, BUFFER_SIZE);
-    recv(socket, buffer, BUFFER_SIZE, 0);
-    printf("%s", buffer);
-
-    if (strncmp(command, "STOR", 4) == 0 && argument) {
-        store_file(socket, argument);
-    }
-}
-
-}
 
 // void download_file(int socket, const char *filename)
 // {
