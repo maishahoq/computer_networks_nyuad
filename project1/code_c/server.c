@@ -20,12 +20,9 @@ void handle_list(int client_socket, int local);
 void handle_cwd(int client_socket, char *foldername, int local);
 void sigchld_handler(int signo);
 
-
-int user_auth(int client_socket, char *command); //USER username PASS password 
+int user_auth(int client_socket, char *command);       // USER username PASS password
 void stor_commands(int client_socket, char *filename); // STOR filename
-void pwd_commands(int client_socket); // CWD foldername !CWD foldername
-
-
+void pwd_commands(int client_socket);                  // CWD foldername !CWD foldername
 
 int main()
 {
@@ -99,9 +96,11 @@ int main()
 
         read_fds = master_set;
 
-        if (select(fd_max + 1, &read_fds, NULL, NULL, NULL) < 0) {
-            if (errno == EINTR) {
-                continue; 
+        if (select(fd_max + 1, &read_fds, NULL, NULL, NULL) < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
             }
             perror("select failed");
             exit(EXIT_FAILURE);
@@ -154,15 +153,17 @@ void handle_client(int client_socket)
     char buffer[BUFFER_SIZE] = {0};
     int bytes_read;
 
-    while ((bytes_read = read(client_socket, buffer, BUFFER_SIZE - 1)) > 0) {
-    buffer[bytes_read] = '\0';
-    printf("Received: %s\n", buffer);
-    handle_command(client_socket, buffer);
-    if (strncmp(buffer, "QUIT", 4) == 0) {
-        printf("Client requested to close the connection.\n");
-        break;
+    while ((bytes_read = read(client_socket, buffer, BUFFER_SIZE - 1)) > 0)
+    {
+        buffer[bytes_read] = '\0';
+        printf("Received: %s\n", buffer);
+        handle_command(client_socket, buffer);
+        if (strncmp(buffer, "QUIT", 4) == 0)
+        {
+            printf("Client requested to close the connection.\n");
+            break;
+        }
     }
-}
 }
 
 void handle_command(int client_socket, char *buffer)
@@ -205,31 +206,37 @@ void handle_command(int client_socket, char *buffer)
         char *foldername = buffer + 5;
         foldername[strcspn(foldername, "\r\n")] = '\0'; // Remove newline characters
         handle_cwd(client_socket, foldername, 1);
-
-    } else if (strcmp(buffer, "PWD\n") == 0 || strcmp(buffer, "PWD\r\n") == 0) {
+    }
+    else if (strcmp(buffer, "PWD\n") == 0 || strcmp(buffer, "PWD\r\n") == 0)
+    {
         pwd_commands(client_socket);
-    } else if (strcmp(buffer, "!PWD\n") == 0 || strcmp(buffer, "!PWD\r\n") == 0) {
+    }
+    else if (strcmp(buffer, "!PWD\n") == 0 || strcmp(buffer, "!PWD\r\n") == 0)
+    {
         system("pwd");
-    }  else if (strncmp(buffer, "USER ", 5) == 0 || strncmp(buffer, "PASS ", 5) == 0) {
+    }
+    else if (strncmp(buffer, "USER ", 5) == 0 || strncmp(buffer, "PASS ", 5) == 0)
+    {
         user_auth(client_socket, buffer);
-
-    } else if (strncmp(buffer, "STOR ", 5) == 0)   
+    }
+    else if (strncmp(buffer, "STOR ", 5) == 0)
     {
         char *filename = buffer + 5;
         filename[strcspn(filename, "\r\n")] = '\0';
 
-        if (fork() == 0) {
+        if (fork() == 0)
+        {
             stor_commands(client_socket, filename);
             exit(0);
         }
     }
 
-    else {
+    else
+    {
         write(client_socket, "ERROR: Unknown command\n", 23);
     }
     // shutdown(client_socket, SHUT_WR); //should we add this here?
 }
-
 
 void handle_retr(int client_socket, char *filename)
 {
@@ -253,6 +260,8 @@ void handle_retr(int client_socket, char *filename)
     }
     // shutdown(client_socket, SHUT_WR); // should we add this here?
     fclose(file);
+    write(client_socket, "226 Transfer completed.\n", 24); // Send completion message
+    exit(0);
 }
 
 void handle_list(int client_socket, int local)
@@ -287,24 +296,27 @@ void handle_list(int client_socket, int local)
     exit(0);
 }
 
-
-void pwd_commands(int client_socket) {
+void pwd_commands(int client_socket)
+{
     char cwd[BUFFER_SIZE];
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+    {
         snprintf(cwd, sizeof(cwd), "257 \"%s\"\n", cwd);
         send(client_socket, cwd, strlen(cwd), 0);
-    } else {
+    }
+    else
+    {
         send(client_socket, "550 Failed to get current directory.\n", 37, 0);
     }
 }
 
-
-
-void stor_commands(int client_socket, char *filename) {
+void stor_commands(int client_socket, char *filename)
+{
     char buffer[BUFFER_SIZE];
     FILE *file = fopen(filename, "wb");
 
-    if (file == NULL) {
+    if (file == NULL)
+    {
         perror("fopen failed");
         send(client_socket, "550 Failed to open file.\n", 25, 0);
         return;
@@ -312,9 +324,11 @@ void stor_commands(int client_socket, char *filename) {
 
     send(client_socket, "150 File status okay; about to open data connection.\n", 52, 0);
 
-    while (1) {
+    while (1)
+    {
         int bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
-        if (bytes_received <= 0) {
+        if (bytes_received <= 0)
+        {
             break;
         }
         fwrite(buffer, 1, bytes_received, file);
@@ -324,23 +338,28 @@ void stor_commands(int client_socket, char *filename) {
     send(client_socket, "226 Transfer completed.\n", 24, 0);
 }
 
-int user_auth(int client_socket, char *command) {
+int user_auth(int client_socket, char *command)
+{
     static int state = 0; // 0: waiting for USER, 1: waiting for PASS
     static char stored_username[50];
     char buffer[BUFFER_SIZE];
     FILE *file = fopen("/Users/maimunaz/Downloads/github/computer_networks_nyuad/project1/users.csv", "r");
 
-    if (file == NULL) {
+    if (file == NULL)
+    {
         perror("fopen failed");
         send(client_socket, "530 Not logged in.\n", 19, 0);
         return 0;
     }
 
-    if (state == 0 && strncmp(command, "USER ", 5) == 0) {
+    if (state == 0 && strncmp(command, "USER ", 5) == 0)
+    {
         char username[50];
         sscanf(command + 5, "%s", username);
-        while (fscanf(file, "%49s %49s", stored_username, buffer) != EOF) {
-            if (strcmp(username, stored_username) == 0) {
+        while (fscanf(file, "%49s %49s", stored_username, buffer) != EOF)
+        {
+            if (strcmp(username, stored_username) == 0)
+            {
                 send(client_socket, "331 Username OK, need password.\n", 32, 0);
                 state = 1;
                 fclose(file);
@@ -348,12 +367,16 @@ int user_auth(int client_socket, char *command) {
             }
         }
         send(client_socket, "530 Not logged in.\n", 19, 0);
-    } else if (state == 1 && strncmp(command, "PASS ", 5) == 0) {
+    }
+    else if (state == 1 && strncmp(command, "PASS ", 5) == 0)
+    {
         char password[50];
         sscanf(command + 5, "%s", password);
         rewind(file); // Go back to the beginning of the file
-        while (fscanf(file, "%49s %49s", stored_username, buffer) != EOF) {
-            if (strcmp(stored_username, stored_username) == 0 && strcmp(password, buffer) == 0) {
+        while (fscanf(file, "%49s %49s", stored_username, buffer) != EOF)
+        {
+            if (strcmp(stored_username, stored_username) == 0 && strcmp(password, buffer) == 0)
+            {
                 send(client_socket, "230 User logged in, proceed.\n", 29, 0);
                 state = 0;
                 fclose(file);
@@ -362,7 +385,9 @@ int user_auth(int client_socket, char *command) {
         }
         send(client_socket, "530 Not logged in.\n", 19, 0);
         state = 0;
-    } else {
+    }
+    else
+    {
         send(client_socket, "503 Bad sequence of commands.\n", 30, 0);
     }
 

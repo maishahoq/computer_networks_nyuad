@@ -157,8 +157,13 @@ void download_file(int socket, const char *filename)
         return;
     }
 
-    while ((bytes_read = read(socket, buffer, BUFFER_SIZE)) > 0)
+    while ((bytes_read = read(socket, buffer, BUFFER_SIZE - 1)) > 0)
     {
+        buffer[bytes_read] = '\0';
+        if (strstr(buffer, "226 Transfer completed.\n") != NULL)
+        {
+            break;
+        }
         fwrite(buffer, 1, bytes_read, file);
     }
     fclose(file);
