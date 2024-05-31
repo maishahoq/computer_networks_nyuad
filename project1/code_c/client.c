@@ -13,10 +13,8 @@ void download_file(int socket, const char *filename);
 void list_files(int socket, int local);
 void change_directory(int socket, const char *foldername, int local);
 
-
-void send_pwdstor(int socket, const char *command, const char *argument); 
-void store_file(int socket, const char *filename); 
-
+void send_pwdstor(int socket, const char *command, const char *argument);
+void store_file(int socket, const char *filename);
 
 int main()
 {
@@ -78,8 +76,6 @@ int main()
     }
 }
 
-
-
 void handle_command(int socket, char *command)
 {
     if (strncmp(command, "RETR ", 5) == 0)
@@ -103,21 +99,28 @@ void handle_command(int socket, char *command)
         change_directory(socket, command + 5, 1);
     }
 
-    else if (strncmp(command, "USER ", 5) == 0 || strncmp(command, "PASS ", 5) == 0 || strncmp(command, "STOR ", 5) == 0) {
+    else if (strncmp(command, "USER ", 5) == 0 || strncmp(command, "PASS ", 5) == 0 || strncmp(command, "STOR ", 5) == 0)
+    {
         char *argument = command + 5;
         send_pwdstor(socket, command, argument);
-    } else if (strcmp(command, "PWD") == 0) {
+    }
+    else if (strcmp(command, "PWD") == 0)
+    {
         send_pwdstor(socket, command, NULL);
-    } else if (strcmp(command, "!PWD") == 0) {
+    }
+    else if (strcmp(command, "!PWD") == 0)
+    {
         char cwd[BUFFER_SIZE];
-        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        if (getcwd(cwd, sizeof(cwd)) != NULL)
+        {
             printf("257 \"%s\"\n", cwd);
-        } else {
+        }
+        else
+        {
             perror("getcwd() error");
         }
     }
-    
-    
+
     else
     {
         write(socket, command, strlen(command));
@@ -162,39 +165,77 @@ void download_file(int socket, const char *filename)
     printf("File downloaded successfully to %s\n", filepath);
 }
 
+// void list_files(int socket, int local)
+// {
+//     char buffer[BUFFER_SIZE];
+//     FILE *fp;
+
+//     if (local)
+//     {
+//         fp = popen("ls -l ../client", "r");
+//     }
+//     else
+//     {
+//         write(socket, "LIST\n", 5);
+//         fp = fdopen(socket, "r");
+//     }
+
+//     if (fp == NULL)
+//     {
+//         perror("Failed to list directory");
+//         return;
+//     }
+
+//     while (fgets(buffer, sizeof(buffer), fp) != NULL)
+//     {
+//         printf("%s", buffer);
+//     }
+
+//     if (!local)
+//     {
+//         fclose(fp);
+//     }
+//     else
+//     {
+//         pclose(fp);
+//     }
+// }
+
 void list_files(int socket, int local)
 {
     char buffer[BUFFER_SIZE];
-    FILE *fp;
+    int bytes_read;
 
     if (local)
     {
-        fp = popen("ls -l ../client", "r");
+        FILE *fp = popen("ls -l ../client", "r");
+        if (fp == NULL)
+        {
+            perror("Failed to list directory");
+            return;
+        }
+
+        while (fgets(buffer, sizeof(buffer), fp) != NULL)
+        {
+            printf("%s", buffer);
+        }
+        pclose(fp);
     }
     else
     {
         write(socket, "LIST\n", 5);
-        fp = fdopen(socket, "r");
-    }
 
-    if (fp == NULL)
-    {
-        perror("Failed to list directory");
-        return;
-    }
+        while ((bytes_read = read(socket, buffer, sizeof(buffer) - 1)) > 0)
+        {
+            buffer[bytes_read] = '\0';
+            printf("%s", buffer);
 
-    while (fgets(buffer, sizeof(buffer), fp) != NULL)
-    {
-        printf("%s", buffer);
-    }
-
-    if (!local)
-    {
-        fclose(fp);
-    }
-    else
-    {
-        pclose(fp);
+            // Check if the response contains the end message
+            if (strstr(buffer, "226 Transfer completed.\n") != NULL)
+            {
+                break;
+            }
+        }
     }
 }
 
@@ -225,43 +266,52 @@ void change_directory(int socket, const char *foldername, int local)
             printf("%s", buffer);
         }
     }
-
 }
 
-void send_pwdstor(int socket, const char *command, const char *argument) {
+void send_pwdstor(int socket, const char *command, const char *argument)
+{
     char buffer[BUFFER_SIZE];
 
-    if (argument) {
+    if (argument)
+    {
         snprintf(buffer, sizeof(buffer), "%s %s\n", command, argument);
-    } else {
+    }
+    else
+    {
         snprintf(buffer, sizeof(buffer), "%s\n", command);
     }
 
     send(socket, buffer, strlen(buffer), 0);
     memset(buffer, 0, BUFFER_SIZE);
     int bytes_received = recv(socket, buffer, BUFFER_SIZE - 1, 0);
-    if (bytes_received > 0) {
+    if (bytes_received > 0)
+    {
         buffer[bytes_received] = '\0';
         printf("%s", buffer);
     }
 
-    if (strncmp(command, "STOR", 4) == 0 && argument) {
+    if (strncmp(command, "STOR", 4) == 0 && argument)
+    {
         store_file(socket, argument);
     }
 }
 
-void store_file(int socket, const char *filename) {
+void store_file(int socket, const char *filename)
+{
     char buffer[BUFFER_SIZE];
     FILE *file = fopen(filename, "rb");
 
-    if (file == NULL) {
+    if (file == NULL)
+    {
         perror("fopen failed");
         return;
     }
-    
-    while (1) {
+
+    while (1)
+    {
         size_t bytes_read = fread(buffer, 1, BUFFER_SIZE, file);
-        if (bytes_read <= 0) {
+        if (bytes_read <= 0)
+        {
             break;
         }
         send(socket, buffer, bytes_read, 0);
@@ -269,7 +319,6 @@ void store_file(int socket, const char *filename) {
 
     fclose(file);
 }
-
 
 // void download_file(int socket, const char *filename)
 // {

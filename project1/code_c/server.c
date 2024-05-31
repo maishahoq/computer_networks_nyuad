@@ -213,11 +213,18 @@ void handle_command(int client_socket, char *buffer)
     }  else if (strncmp(buffer, "USER ", 5) == 0 || strncmp(buffer, "PASS ", 5) == 0) {
         user_auth(client_socket, buffer);
 
-    } else if (strncmp(buffer, "STOR ", 5) == 0) {
+    } else if (strncmp(buffer, "STOR ", 5) == 0)   
+    {
         char *filename = buffer + 5;
         filename[strcspn(filename, "\r\n")] = '\0';
-        stor_commands(client_socket, filename);
-    } else {
+
+        if (fork() == 0) {
+            stor_commands(client_socket, filename);
+            exit(0);
+        }
+    }
+
+    else {
         write(client_socket, "ERROR: Unknown command\n", 23);
     }
     // shutdown(client_socket, SHUT_WR); //should we add this here?
@@ -275,6 +282,9 @@ void handle_list(int client_socket, int local)
     }
     // shutdown(client_socket, SHUT_WR); // should we add this here?
     pclose(fp);
+
+    write(client_socket, "226 Transfer completed.\n", 24);
+    exit(0);
 }
 
 
