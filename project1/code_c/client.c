@@ -177,6 +177,8 @@ void list_files(int socket, int local)
     {
         pclose(fp);
     }
+    fclose(fp);
+    pclose(fp);
 }
 
 void change_directory(int socket, const char *foldername, int local)
