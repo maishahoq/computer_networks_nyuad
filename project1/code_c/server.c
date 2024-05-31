@@ -407,21 +407,21 @@ void handle_cwd(int client_socket, char *foldername, int local)
         }
         else
         {
-            write(client_socket, "ERROR: Failed to change local directory\n", 40);
+            write(client_socket, "550 Failed to change local directory.\n", 39);
         }
-        // shutdown(client_socket, SHUT_WR); // should we add this here?
     }
     else
     {
         snprintf(path, sizeof(path), "../server/%s", foldername);
         if (chdir(path) == 0)
         {
-            write(client_socket, "Remote directory changed\n", 25);
+            write(client_socket, "250 Remote directory changed.\n", 30);
         }
         else
         {
-            write(client_socket, "ERROR: Failed to change remote directory\n", 41);
+            write(client_socket, "550 Failed to change remote directory.\n", 40);
         }
+
         // shutdown(client_socket, SHUT_WR); // should we add this here?
     }
 }
