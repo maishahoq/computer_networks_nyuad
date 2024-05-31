@@ -8,6 +8,8 @@
 #include <signal.h>
 #include <sys/select.h>
 
+#include <errno.h>
+
 #define PORT 21 // Default FTP port acc to google
 #define BUFFER_SIZE 1024
 
@@ -97,8 +99,10 @@ int main()
 
         read_fds = master_set; // Copying the master set to the read set
 
-        if (select(fd_max + 1, &read_fds, NULL, NULL, NULL) < 0) // Wait for activity on any socket
-        {
+        if (select(fd_max + 1, &read_fds, NULL, NULL, NULL) < 0) {
+            if (errno == EINTR) {
+                continue; 
+            }
             perror("select failed");
             exit(EXIT_FAILURE);
         }
@@ -150,11 +154,13 @@ void handle_client(int client_socket)
     char buffer[BUFFER_SIZE] = {0};
     int bytes_read;
 
-    if ((bytes_read = read(client_socket, buffer, BUFFER_SIZE - 1)) > 0)
-    {
-        buffer[bytes_read] = '\0';
-        printf("Received: %s\n", buffer);
-        handle_command(client_socket, buffer);
+    while ((bytes_read = read(client_socket, buffer, BUFFER_SIZE - 1)) > 0) {
+    buffer[bytes_read] = '\0';
+    printf("Received: %s\n", buffer);
+    handle_command(client_socket, buffer);
+    if (strncmp(buffer, "QUIT", 4) == 0) {
+        printf("Client requested to close the connection.\n");
+        break;
     }
 
     if (bytes_read == 0)
